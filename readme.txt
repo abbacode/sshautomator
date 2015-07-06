@@ -87,3 +87,5 @@ Two optional columns are found in the 'tasks' tab and are relevant for running c
  - Task delay indicates how long you should wait after executing a command before attempting to grab the output
  - Buffer size is the output in bytes that you expect to grab
  - Make sure the right delay and buffer size is specified otherwise the script will not be able to grab the full output
+
+master
