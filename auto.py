@@ -342,4 +342,6 @@ class TaskTemplate(object):
         self.filename = "TBD"
 
 # Run the script
-auto = Automate()
+if __name__ == '__main__':
+    auto = Automate()
+    
