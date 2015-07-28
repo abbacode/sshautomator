@@ -10,46 +10,6 @@ Features of the script:
 * Both Cisco and non-Cisco devices are supported (all devices which have a SSH CLI)
 * Simple excel front-end to help manage the automation of task
 
-===========================
-Version 1.5 Updates/Fixes
-===========================
-- Modified the code so it's more object oriented and easier to modify
-- The local output file will have a timestamp to help determine when the capture was taken
-- Improved stability/bug fixes
-
-===========================
-Version 1.4 Updates/Fixes
-===========================
-- Log file will now be generated to track which tasks were executed/not executed
-- Fixed bug and the script will now strip spaces from device name/username/password etc
-
-===========================
-Version 1.3 Updates/Fixes
-===========================
-- Support for multiple devices defined for a single task
-- Fixed bug with script trying to connect to device with similar string in name
-
-===========================
-Version 1.2 Updates/Fixes
-===========================
-- Empty rows in the 'tasks' worksheet no longer generate an error message
-
-===========================
-Version 1.1 Updates/Fixes
-===========================
-- Can now toggle whether the device is a Cisco device or not in the devices worksheet
-- The script will attempt the following for Cisco based devices:
-  - Change the terminal length to 0 upon connection
-  - Automatically enter the 'enable' mode and send the enable password
-  - Automatically abort the task if you cannot enter enable mode
-  - Automatically wait to see the '#' in between the execution of commands in the same task
-  - No requirement to enter a buffer size or task delay, script will automatically detect
-- Non Cisco devices still to manually define the task delay and buffer size
-  - No attempt to modify the terminal length or enter the enable mode for the execution of task
-- Added error handling during the reading of auto.xls
-- Address bug with the way the output file was being saved (newlines were being garbled)
-- Added various examples into auto.xls 
-
 =======================================================
 Practical application examples for network engineers:
 =======================================================
@@ -83,7 +43,7 @@ Operating instructions:
 * Extract the contents of the zip file into a directory
 * Edit the auto.xls and define the device information (device name,ip address,username,password,cisco or non-cisco device)
 * Edit the auto.xls and define the task (task no, target device, commands to run, filename to store output)
-* Run the script from the command line, i.e. type auto.py
+* Run the script from the command line, i.e. type python auto.py <spreadsheet.xls>
 
 Two optional columns are found in the 'tasks' tab and are relevant for running commands on non-Cisco devices.  
  - Task delay indicates how long you should wait after executing a command before attempting to grab the output
