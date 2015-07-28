@@ -1,347 +1,321 @@
-__author__ = 'Abdul Karim El-Assaad'
-__version__ = 1.5
+__version__ = 2.0
 
 import xlrd
 import paramiko
 import time
 import socket
-import re
+import sys
 
-class Automate(object):
+class Database(object):
     def __init__(self):
-        self.database = {}      # Raw information read from auto.xls
-        self.tasks = {}         # Valid task extract from database
-        self.device_info = {}   # Information obtained from devices worksheet
-        self.output = {}        # Output/result of the tasks that are executed
-        self.summary = {}       # Summary of whether the task were successful or not
+        self.devices = {}
+        self.tasks = {}
 
-        self.ReadTaskFromFile()
-        self.GetDevicesFromDatabase()
-        self.GetTasksFromDatabase()
-        self.RunAllTask()
-        self.WriteTaskSummaryToFile()
+class Device(object):
+    def __init__(self):
+        self.hostname = ''
+        self.ipaddress = ''
+        self.username = ''
+        self.password = ''
+        self.enable_pass = ''
+        self.platform = 'cisco'
 
-    #----------------------------------------------------------------
-    # Read information from the auto.xlsx
-    # Information will be stored by worksheet name, row, column name
-    #-----------------------------------------------------------------
-    def ReadTaskFromFile(self):
-        try:
-            wb = xlrd.open_workbook('auto.xls')
-        except:
-            print ("Cannot open auto.xls file, aborting script")
-            exit()
+class Task(object):
+    def __init__(self):
+        self.no = '-1'
+        self.description = ''
+        self.enabled = False
+        self.target = {}
+        self.cmds = []
+        self.delay = ''
+        self.buffer = ''
+        self.filename = ''
+        self.status = {}
+        self.devices = {}
 
-        temp_db = []
-        for i, worksheet in enumerate(wb.sheets()):
-            header_cells = worksheet.row(0)
-            num_rows = worksheet.nrows - 1
-            curr_row = 0
-            header = [each.value for each in header_cells]
-            while curr_row < num_rows:
-                curr_row += 1
-                row = [int(each.value) if isinstance(each.value, float)
-                       else each.value
-                       for each in worksheet.row(curr_row)]
-                value_dict = dict(zip(header, row))
-                temp_db.append(value_dict)
-            else:
-                self.database[worksheet.name] = temp_db
-                temp_db = [] 
+class Output(object):
+    def __init__(self):
+        self.cmd_output = {}
 
-    # -----------------------------------------------------------------------------------------
-    # Read info from database dictionary, specifically device info such as username/passwords
-    # -----------------------------------------------------------------------------------------
-    def GetDevicesFromDatabase(self):
-        for device in self.database["Devices"]:
-            if self.ValidDeviceInDB(device):
-                device_name = str(device["Name"]).strip()
-                if device_name not in self.device_info:
-                    tempObj = DeviceTemplate()
-                    tempObj.name = str(device["Name"]).strip()
-                    tempObj.ip_address = str(device["IP Address"]).strip()
-                    tempObj.username = str(device["Username"]).strip()
-                    tempObj.password = str(device["Password"]).strip()
-                    tempObj.enable = str(device["Enable Password"]).strip()
-                    tempObj.cisco_platform = str(device["Cisco Platform (Default: No)"]).strip().upper()
-                    # Create a new device entry
-                    self.device_info[device_name] = tempObj
+#----------------------------------------------------------------
+# Initalise empty database to capture raw spreadsheet data
+#-----------------------------------------------------------------
+DATA = {}       #raw_data read from the file
 
-    def FindExactString(self,word):
-        return re.compile(r'^\b({0})$\b'.format(word),flags=re.IGNORECASE).search
+#----------------------------------------------------------------
+# Read information from the database.xlsx
+# Information will be stored by worksheet name, row, column name
+#-----------------------------------------------------------------
+def read_database_from_file(filename):
+    try:
+        wb = xlrd.open_workbook(filename)
+    except:
+        print ('Cannot read data from: \'{}\''.format(filename))
+        print ('Script failed.')
+        exit()
+    worksheet_data = []
+    for i, worksheet in enumerate(wb.sheets()):
+        header_cells = worksheet.row(0)
+        num_rows = worksheet.nrows - 1
+        curr_row = 0
+        header = [each.value for each in header_cells]
+        while curr_row < num_rows:
+            curr_row += 1
+            row = [int(each.value) if isinstance(each.value, float)
+                   else each.value
+                   for each in worksheet.row(curr_row)]
+            value_dict = dict(zip(header, row))
+            worksheet_data.append(value_dict)
+        else:
+            DATA[worksheet.name] = worksheet_data
+            worksheet_data = []
 
-    def GetDevice(self,device_name):
-        for device in self.device_info:
-            if self.FindExactString(device_name)(device):
-                return self.device_info[device]
-        return None
 
-    #--------------------------------------------------------
-    # Read over the raw database and grab all the valid tasks
-    #--------------------------------------------------------
-    def GetTasksFromDatabase(self):
-        for task in self.database['Tasks']:
-            task_no = task["Task No"]
-            if self.ValidTaskInDB(task):
-                valid_devices = self.TaskHasValidDevices(task)
-                if valid_devices:
-                    if task_no not in self.tasks:
-                        tempObj = TaskTemplate()
-                        tempObj.no          = task["Task No"]
-                        tempObj.description = task["Task Description"]
-                        tempObj.target      = task["Target Device"].splitlines()
-                        tempObj.cmds        = task["Commands To Run"].splitlines()
-                        tempObj.delay       = task["Task Delay (Default: 1)"]
-                        tempObj.buffer      = task["Buffer Size: (Default 5000 bytes)"]
-                        tempObj.filename    = task["Filename to store output"]
-                        if not tempObj.delay:
-                            tempObj.delay = 1
-                        if not tempObj.buffer:
-                            tempObj.buffer = 5000
-                        self.tasks[task_no] = tempObj
-                else:
-                    self.summary[task_no] = "Task not executed: incomplete device details in spreadsheet"
-            else:
-                if task_no and not self.summary.get(task_no):
-                    self.summary[task_no] = "Task not executed: incomplete task entry in spreadsheet"
+def valid_row(worksheet_name, row):
+    WORKSHEET_NAME = worksheet_name
+    REQUIRED_FIELDS = {
+        'tasks'   : ['Task No','Target Device','Commands To Run'],
+        'devices' : ['Device Name','IP Address','Username','Password'],
+    }
+    for field in REQUIRED_FIELDS[WORKSHEET_NAME]:
+        if not DATA[WORKSHEET_NAME][row][field]:
+            return False
+    return True
 
-    def GetTask(self,task_no):
-        for task in self.tasks:
-            if task_no == task:
-                return self.tasks[task]
-        return None
-    # ------------------------------------------------------------------------------------------
-    # Capture the output of each task in the task dictionary so it can be shown at future state
-    # ------------------------------------------------------------------------------------------
-    def CaptureTaskOutput(self,task_no,device_name,cmd_run,output_captured):
-        if task_no not in self.output:
-            self.output[task_no] = {}
-            self.output[task_no]["Device"] = []
-            self.output[task_no]["Commands"] = []
-            self.output[task_no]["Output"] = []
-        self.output[task_no]["Device"].append(device_name)
-        self.output[task_no]["Commands"].append(cmd_run)
-        self.output[task_no]["Output"].append(output_captured)
+def initalise_devices():
+    WORKSHEET_NAME = 'devices'
+    for row_no, row in enumerate(DATA[WORKSHEET_NAME]):
+        if valid_row(WORKSHEET_NAME,row_no):
+            device = Device()
+            device.hostname     = str(DATA[WORKSHEET_NAME][row_no]['Device Name'].strip().lower())
+            device.ipaddress    = str(DATA[WORKSHEET_NAME][row_no]['IP Address'].strip())
+            device.username     = str(DATA[WORKSHEET_NAME][row_no]['Username'].strip())
+            device.password     = str(DATA[WORKSHEET_NAME][row_no]['Password'].strip())
+            device.enable_pass  = str(DATA[WORKSHEET_NAME][row_no]['Enable Password'].strip())
+            device.platform     = str(DATA[WORKSHEET_NAME][row_no]['Cisco Platform (Default: No)'].strip().lower())
+            if device.platform:
+                if 'yes' in device.platform:
+                    device.platform = 'cisco'
+            d.devices[device.hostname] = device
 
-    #----------------------------------------------------------------
-    # Grab the session output and convert it to readable text format
-    #----------------------------------------------------------------
-    def GetSessionOutput(self,session,bytes_received):
-        output = session.recv(bytes_received)
-        output = output.decode('UTF-8')
-        return output
-    # -----------------------------------------------
-    # Function to send a command to a device via SSH
-    # -----------------------------------------------
-    def RunCommand(self,session,command,buffer_size=1000,sleep_time=2,cisco_device=False):
-        if cisco_device:
-            self.WaitForCiscoPrompt(session)
+def initalise_tasks():
+    WORKSHEET_NAME = 'tasks'
+    for row_no, row in enumerate(DATA[WORKSHEET_NAME]):
+        if valid_row(WORKSHEET_NAME,row_no):
+            task = Task()
+            task.no          = int(DATA[WORKSHEET_NAME][row_no]['Task No'])
+            task.enabled     = str(DATA[WORKSHEET_NAME][row_no]['Enabled'].strip().lower())
+            task.description = str(DATA[WORKSHEET_NAME][row_no]['Task Description'])
+            task.target      = str(DATA[WORKSHEET_NAME][row_no]['Target Device'].strip().lower())
+            task.cmds        = str(DATA[WORKSHEET_NAME][row_no]['Commands To Run'].strip())
+            task.delay       = str(DATA[WORKSHEET_NAME][row_no]['Task Delay (Default: 1)'])
+            task.buffer      = str(DATA[WORKSHEET_NAME][row_no]['Buffer Size: (Default 5000 bytes)'])
+            task.filename    = str(DATA[WORKSHEET_NAME][row_no]['Filename to store output'].strip())
+            if task.target:
+                task.target = task.target.splitlines()
+            if task.cmds:
+                task.cmds = task.cmds.splitlines()
+            if task.delay:
+                task.delay = float(task.delay)
+            if task.buffer:
+                task.buffer = int(task.buffer)
+            if not task.delay:
+                task.delay = float(1)
+            if not task.buffer:
+                task.buffer = int(5000)
+            if not task.filename:
+                task.filename = 'default_output.txt'
+            if 'yes' in task.enabled:
+                d.tasks[task.no] = task
+#------------------------------------------
+# Useful functions
+#------------------------------------------
+def get_device(device_name):
+    return d.devices.get(device_name)
 
-        print ("  ++ Command executed: {}".format(command))
-        session.send("{}\n".format(command))
-        time.sleep(sleep_time)
-        output = self.GetSessionOutput(session,buffer_size)
+def get_task(task_no):
+    return d.tasks.get(task_no)
+#------------------------------------------
+# Script Functions
+#------------------------------------------
+def run_command(session,task,device,command):
+    if 'cisco' in device.platform:
+        wait_for_cisco_prompt(session)
+    print ("  ++ Command executed: {}".format(command))
+    session.send("{}\n".format(command))
+    time.sleep(task.delay)
+    cmd_output = get_session_output(session,task.buffer)
+    if 'cisco' in device.platform:
+        while "#" not in cmd_output:
+            print ("    ++ Output still being received")
+            session.send("\n")
+            cmd_output += get_session_output(session,task.buffer)
+            time.sleep(0.5)
+    return cmd_output
 
-        if cisco_device:
-            while "#" not in output:
-                print ("    ++ Output still being received")
-                session.send("\n")
-                output += self.GetSessionOutput(session,buffer_size)
-                time.sleep(0.5)
-        return (output)
+def get_session_output(session,bytes_received):
+    output = session.recv(bytes_received)
+    output = output.decode('UTF-8')
+    return output
 
-    # -----------------------------------------------------------------
-    # Function to prepare the SSH session, applicable to Cisco devices
-    # -----------------------------------------------------------------
-    def PrepareCiscoSession(self,session,enable_password):
-        print ("++ Connection status: successful")
-        print ("++ Cisco device mode set, preparing session")
-        print ("  ++ Changing terminal length to 0")
-        session.send("terminal length 0\n")
-        print ("  ++ Checking enable mode status")
+def wait_for_cisco_prompt(session):
+    session.send("\n")
+    time.sleep(0.5)
+    prompt = get_session_output(session,1000)
+    while "#" not in prompt:
         session.send("\n")
-        time.sleep(0.8)
-        output = self.GetSessionOutput(session,1000)
-        if ">" in output:
-            print ("    ++ Activating enable mode")
-            session.send("enable\n")
-            time.sleep(0.8)
-            session.send(enable_password+"\n")
-            time.sleep(0.8)
-            output = self.GetSessionOutput(session,1000)
-            if "#" in output:
-                print ("    ++ Status: active\n")
-            else:
-                print ("    ++ Status: failed\n")
-        elif "#" in output:
+        time.sleep(0.5)
+        prompt = get_session_output(session,1000)
+
+def prepare_cisco_session(session, device):
+    print ("++ Connection status: successful")
+    print ("++ Cisco device mode set, preparing session")
+    print ("  ++ Changing terminal length to 0")
+    session.send("terminal length 0\n")
+    print ("  ++ Checking enable mode status")
+    session.send("\n")
+    time.sleep(0.7)
+    output = get_session_output(session,1000)
+    if ">" in output:
+        print ("    ++ Activating enable mode")
+        session.send("enable\n")
+        time.sleep(0.7)
+        session.send(device.enable_pass+"\n")
+        time.sleep(0.7)
+        output = get_session_output(session,1000)
+        if "#" in output:
             print ("    ++ Status: active\n")
         else:
-            print (" ++ Status: could not determine\n")
+            print ("    ++ Status: failed\n")
+    elif "#" in output:
+        print ("    ++ Status: active\n")
+    else:
+        print (" ++ Status: could not determine\n")
 
-    def WaitForCiscoPrompt(self,session):
-        session.send("\n")
-        time.sleep(0.5)
-        prompt = self.GetSessionOutput(session,1000)
-        while "#" not in prompt:
-            session.send("\n")
-            time.sleep(0.5)
-            prompt = self.GetSessionOutput(session,1000)
+def enable_mode_active(session):
+    session.send("\n")
+    time.sleep(0.5)
+    state = get_session_output(session,1000)
+    if "#" in state:
+        return True
+    return False
 
-    def EnableModeActive(self,session):
-        session.send("\n")
-        time.sleep(0.5)
-        state = self.GetSessionOutput(session,1000)
-        if "#" in state:
-            return True
-        return False
+def run_task(task_no):
+    task = get_task(task_no)
+    print ("\n===============================================")
+    print ("Executing task no: {} ".format(task.no))
+    print ("===============================================")
+    if len(task.target) > 1:
+        print ("++ Task will be executed on multiple devices")
+    else:
+        print ("++ Task will be executed on a single device")
 
-    # -------------------------------------------------------------
-    # Function to execute the specified task based on task number
-    # -------------------------------------------------------------
-    def RunTask(self,task_no):
-        task = self.GetTask(task_no)
+    for device_name in task.target:
+        device = get_device(device_name)
+        print ("--------------------------------------------")
+        print ("Connecting to {} on '{}':".format(device.hostname,device.ipaddress))
+        print ("--------------------------------------------")
+        #-------------------
+        # Start SSH session
+        #-------------------
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
+            ssh.connect(device.ipaddress,
+                        username=device.username,
+                        password=device.password,
+                        allow_agent=False)
+        except paramiko.AuthenticationException as e:
+            print ("-- {} [task aborted]".format(e))
+            task.status[device.hostname] = 'Task failed : {}'.format(e)
+            return
+        except paramiko.SSHException as e:
+            print ("-- {} [task aborted]".format(e))
+            task.status[device.hostname] = 'Task failed : {}'.format(e)
+            return
+        except socket.error as e:
+            print ("-- {} [task aborted]".format(e))
+            task.status[device.hostname] = 'Task failed : {}'.format(e)
+            return
 
-        print ("\n===============================================")
-        print ("Executing task no: {} ".format(task_no))
-        print ("===============================================")
+        session = ssh.invoke_shell()
 
-        if len(task.target) > 1:
-            print ("++ Task will be executed on multiple devices")
+        if 'cisco' in device.platform:
+            prepare_cisco_session(session,device)
+            if not enable_mode_active(session):
+                print ("-- Aborting task, could not enter enable mode")
+                print ("  -- Recommendation 1: check enable password")
+                print ("  -- Recommendation 2: disable Cisco platform if this is not a Cisco device")
+                task.status[device.hostname] = 'Task failed, could not enter enable mode'
+                return
+
+        print ("++ The following commands will be run:")
+        task.devices[device.hostname] = Output()
+        for cmd in task.cmds:
+            cmd_output = run_command(session,task,device,cmd)
+            task.devices[device.hostname].cmd_output[cmd] = cmd_output.splitlines()
         else:
-            print ("++ Task will be executed on a single device")
+            print ("  ++ Output written to: {}".format(task.filename))
+            task.status[device.hostname] = 'Task executed succesfully'
+            write_task_output_to_file(task)
 
-        for device_name in task.target:
-            device = self.GetDevice(device_name)
-            print ("--------------------------------------------")
-            print ("Connecting to {} on '{}':".format(device.name,device.ip_address))
-            print ("--------------------------------------------")
-            #-------------------
-            # Start SSH session
-            #-------------------
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            try:
-                ssh.connect(device.ip_address, username=device.username, password=device.password, allow_agent=False)
-            except paramiko.AuthenticationException as e:
-                print ("-- Task aborted: {}".format(e))
-                self.summary[task_no] = "Task not executed: {}".format(e)
-                return
-            except paramiko.SSHException as e:
-                print ("-- Task aborted: {}".format(e))
-                self.summary[task_no] = "Task not executed: {}".format(e)
-                return
-            except socket.error as e:
-                print ("-- Task aborted: {}".format(e))
-                self.summary[task_no] = "Task not executed: {}".format(e)
-                return
-            target = ssh.invoke_shell()
-
-            if device.cisco_platform == "YES":
-                self.PrepareCiscoSession(target,device.enable)
-                if not self.EnableModeActive(target):
-                    print ("-- Aborting task, could not enter enable mode")
-                    print ("  -- Recommendation 1: check enable password")
-                    print ("  -- Recommendation 2: disable Cisco platform if this is not a Cisco device")
-                    self.summary[task_no] = "Task not executed, could not enter enable mode"
-                    return
-
-            print ("++ The following commands will be run:")
-            for cmd in task.cmds:
-                if device.cisco_platform == "YES":
-                    output = self.RunCommand(target,cmd,task.buffer,task.delay,True)
-                else:
-                    output = self.RunCommand(target,cmd,task.buffer,task.delay,False)
-                self.CaptureTaskOutput(task_no,device.name,cmd,output)
-                self.WriteTaskOutputToFile(task_no)
-            else:                
-                print ("  ++ Output written to: {}".format(task.filename))
-                self.summary[task_no] = "Task executed"
-                
-
-    # ------------------------------------
-    # Function to execute all valid task
-    # ------------------------------------
-    def RunAllTask(self):
-        for task in sorted(self.tasks):
-            self.RunTask(task)
-
-    # ------------------------------------------------------------
-    # Write the output that was captured for each task to a file
-    # -------------------------------------------------------------
-    def WriteTaskOutputToFile(self,task_no):
-        task = self.GetTask(task_no)
-        filename = task.filename
-        with open(filename,"w") as output_file:
-            last_device_name = "_blank_"
-            
-            for no, cmd in enumerate(self.output[task_no]["Commands"]):
-                current_device_name = self.output[task_no]["Device"][no]
-                if last_device_name != current_device_name:
-                    last_device_name = current_device_name
-                    print ("",file=output_file)
-                    capture_time = time.asctime( time.localtime(time.time()))
-                    print ("*******************************************************",file=output_file)
-                    print ("++ Output captured from: '{}' @ {}:".format(current_device_name,capture_time),file=output_file)
-                    print ("*******************************************************",file=output_file)
+def run_all_task():
+    for task in sorted(d.tasks):
+        run_task(task)
+# ------------------------------------------------------------
+# Write the output that was captured for each task to a file
+# -------------------------------------------------------------
+def write_task_output_to_file(task):
+    with open(task.filename,"w") as output_file:
+        capture_time = time.asctime( time.localtime(time.time()))
+        for device in task.devices:
+            print ("*******************************************************",file=output_file)
+            print ("++ Output captured from: '{}' @ {}:".format(device,capture_time),file=output_file)
+            print ("*******************************************************",file=output_file)
+            for cmd in task.devices[device].cmd_output:
                 print ("----------------------------------------------------------",file=output_file)
                 print ("Output for command: '{}'".format(cmd),     file=output_file)
                 print ("----------------------------------------------------------",file=output_file)
-                command_output_as_list = self.output[task_no]["Output"][no].splitlines()
-                for each_line in command_output_as_list:
-                    print (each_line, file=output_file)
+                for line in task.devices[device].cmd_output[cmd]:
+                    print (line, file=output_file)
 
-    def WriteTaskSummaryToFile(self):
-        with open("task_summary.log","w") as output_file:
-            print ("=================================",file=output_file)
-            print ("Task Execution Summary: ",file=output_file)
-            print ("=================================",file=output_file)
-            for task_no in self.summary:
-                print ("-- Task No: '{}' status: {}".format(task_no,self.summary[task_no]),file=output_file)
+def write_task_summary_to_file():
+    with open("task_summary.txt","w") as output_file:
+        capture_time = time.asctime( time.localtime(time.time()))
+        print ("=================================",file=output_file)
+        print ("Task Execution Summary @ {}: ".format(capture_time),file=output_file)
+        print ("=================================",file=output_file)
+        for task_no in d.tasks:
+            task = get_task(task_no)
+            print ('-- Task No: {}'.format(task.no),file=output_file)
+            for device in sorted(task.status):
+                print ('  -- \'{}\': {}'.format(device,task.status[device]),file=output_file)
         print ("\n\n****************************************")
-        print (" task_summary.log file has been generated")
+        print (" task_summary.txt file has been generated")
         print ("****************************************")
 
-    def ValidDeviceInDB(self,device_entry):
-        if device_entry["Name"]         and \
-           device_entry["IP Address"]   and \
-           device_entry["Username"]     and \
-           device_entry["Password"]: return True
-        return False
 
-    def ValidTaskInDB(self,task):
-        if task["Task No"]                  and \
-           task["Target Device"]            and \
-           task["Commands To Run"]          and \
-           task["Filename to store output"]: return True
-        return False
-
-    def TaskHasValidDevices(self,task):
-        for device in task["Target Device"].splitlines():
-            if not self.GetDevice(device):
-                return False
-        return True
-
-
-class DeviceTemplate(object):
-    def __init__(self):
-        self.name = "TBD"
-        self.ip_address = "TBD"
-        self.username = "TBD"
-        self.password = "TBD"
-        self.enable = "TBD"
-        self.cisco_platform = "TBD"
-
-class TaskTemplate(object):
-    def __init__(self):
-        self.no = "TBD"
-        self.description = "TBD"
-        self.target = []
-        self.cmds = []
-        self.delay = "TBD"
-        self.buffer = "TBD"
-        self.filename = "TBD"
+def main(argv):
+    arg_length = len(sys.argv)
+    print ('+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-+')
+    print ('    SSH Automator v{}'.format(__version__))
+    print ('+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-+')
+    if arg_length < 2:
+        print ('Usage: python {} <spreadsheet.xlsx>' .format(sys.argv[0]))
+        exit()
+    if sys.argv[1]:
+        filename = sys.argv[1]
+    try:
+        read_database_from_file(filename)
+        print ('Data read from: \'{}\''.format(filename))
+        initalise_devices()
+        initalise_tasks()
+        run_all_task()
+        write_task_summary_to_file()
+    except IOError:
+        exit()
 
 # Run the script
 if __name__ == '__main__':
-    auto = Automate()
-    
+    d = Database()
+    main(sys.argv)
