@@ -122,7 +122,7 @@ def initalise_tasks():
             if not task.delay:
                 task.delay = float(1)
             if not task.buffer:
-                task.buffer = int(5000)
+                task.buffer = int(10000)
             if not task.filename:
                 task.filename = 'default_output.txt'
             if 'yes' in task.enabled:
@@ -150,21 +150,20 @@ def run_command(session,task,device,command):
             print ("    ++ Output still being received")
             session.send("\n")
             cmd_output += get_session_output(session,task.buffer)
-            time.sleep(0.5)
+            time.sleep(0.2)
     return cmd_output
 
 def get_session_output(session,bytes_received):
-    output = session.recv(bytes_received)
-    output = output.decode('UTF-8')
+    output = session.recv(bytes_received).decode('UTF-8')
     return output
 
 def wait_for_cisco_prompt(session):
     session.send("\n")
-    time.sleep(0.5)
+    time.sleep(0.3)
     prompt = get_session_output(session,1000)
     while "#" not in prompt:
         session.send("\n")
-        time.sleep(0.5)
+        time.sleep(0.3)
         prompt = get_session_output(session,1000)
 
 def prepare_cisco_session(session, device):
