@@ -104,7 +104,7 @@ def initalise_tasks():
         if valid_row(WORKSHEET_NAME,row_no):
             task = Task()
             task.no          = int(DATA[WORKSHEET_NAME][row_no]['Task No'])
-            task.enabled     = str(DATA[WORKSHEET_NAME][row_no]['Enabled'].strip().lower())
+            task.enabled     = str(DATA[WORKSHEET_NAME][row_no]['Enabled (yes/no)'].strip().lower())
             task.description = str(DATA[WORKSHEET_NAME][row_no]['Task Description'])
             task.target      = str(DATA[WORKSHEET_NAME][row_no]['Target Device'].strip().lower())
             task.cmds        = str(DATA[WORKSHEET_NAME][row_no]['Commands To Run'].strip())
@@ -173,14 +173,14 @@ def prepare_cisco_session(session, device):
     session.send("terminal length 0\n")
     print ("  ++ Checking enable mode status")
     session.send("\n")
-    time.sleep(0.7)
+    time.sleep(0.5)
     output = get_session_output(session,1000)
     if ">" in output:
         print ("    ++ Activating enable mode")
         session.send("enable\n")
-        time.sleep(0.7)
+        time.sleep(0.5)
         session.send(device.enable_pass+"\n")
-        time.sleep(0.7)
+        time.sleep(0.5)
         output = get_session_output(session,1000)
         if "#" in output:
             print ("    ++ Status: active\n")
@@ -220,22 +220,21 @@ def run_task(task_no):
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            ssh.connect(device.ipaddress,
-                        username=device.username,
-                        password=device.password,
-                        allow_agent=False)
-        except paramiko.AuthenticationException as e:
-            print ("-- {} [task aborted]".format(e))
+            ssh.connect(
+                device.ipaddress,
+                username=device.username,
+                password=device.password,
+                allow_agent=False
+            )
+        except (
+                paramiko.AuthenticationException,
+                paramiko.SSHException,
+                socket.error
+        ) as e:
+            print ('-- Aborting task')
+            print ('  -- {}'.format(e))
             task.status[device.hostname] = 'Task failed : {}'.format(e)
-            return
-        except paramiko.SSHException as e:
-            print ("-- {} [task aborted]".format(e))
-            task.status[device.hostname] = 'Task failed : {}'.format(e)
-            return
-        except socket.error as e:
-            print ("-- {} [task aborted]".format(e))
-            task.status[device.hostname] = 'Task failed : {}'.format(e)
-            return
+            continue
 
         session = ssh.invoke_shell()
 
