@@ -9,6 +9,7 @@ Features of the script:
 * Resulting output of command will be saved to a local file 
 * Both Cisco and non-Cisco devices are supported (all devices which have a SSH CLI)
 * Simple excel front-end to help manage the automation of task
+* Multi-processing support to speed up the execution of task
 
 =======================================================
 Practical application examples for network engineers:
@@ -43,7 +44,10 @@ Operating instructions:
 * Extract the contents of the zip file into a directory
 * Edit the auto.xls and define the device information (device name,ip address,username,password,cisco or non-cisco device)
 * Edit the auto.xls and define the task (task no, target device, commands to run, filename to store output)
-* Run the script from the command line, i.e. type python auto.py <spreadsheet.xls>
+* Run the script from the command line, i.e. type 
+ - python auto.py -file auto.xls 
+ - python auto.py -file auto.xls -turbo
+
 
 Two optional columns are found in the 'tasks' tab and are relevant for running commands on non-Cisco devices.  
  - Task delay indicates how long you should wait after executing a command before attempting to grab the output
