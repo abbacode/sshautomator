@@ -116,7 +116,7 @@ class Database(object):
                 if task.delay:
                     task.delay = float(Decimal(task.delay))
                 if task.buffer:
-                    task.buffer = int(task.buffer)
+                    task.buffer = float(Decimal(task.buffer))
                 if not task.delay:
                     task.delay = float(1)
                 if not task.buffer:
