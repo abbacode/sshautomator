@@ -1,4 +1,4 @@
-# automator
+# SSH Task Automation Tool v3.0 
 
 ==========================
 Features of the script:
