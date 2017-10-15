@@ -1,6 +1,6 @@
 # SSH Task Automation Tool v3.0 
 
-==========================
+
 Features of the script:
 ==========================
 * Automated execution of commands over SSH
@@ -11,7 +11,7 @@ Features of the script:
 * Simple excel front-end to help manage the automation of task
 * Multi-processing support to speed up the execution of task
 
-=======================================================
+
 Practical application examples for network engineers:
 =======================================================
 * Capturing of the running configuration from multiple devices into unique filenames
@@ -21,7 +21,7 @@ Practical application examples for network engineers:
 * Quick capture of specific commands from bulk set of devices to assist with auditing
 * Bulk configuration updates such as SNMP, AAA, NTP settings to simplify deployment
 
-====================
+
 Installation notes
 ====================
 Tested using Windows 8.1 64-bit and 32-bit running Python 3.4.2
@@ -38,7 +38,7 @@ https://www.dropbox.com/s/n6rckn0k6u4nqke/pycrypto-2.6.1.zip?dl=0]
 
 Another common problem which might occur when installing the Crypto pre-compiled binaries is that it cannot detect the Python path in the registry.  Attached is a copy of the registriy settings which point to the default install path (C:\Python34) directory.  You can double click the attached 'Python Install Path.reg' file or alternatively create the entry yourself.
 
-=========================
+
 Operating instructions:
 =========================
 * Extract the contents of the zip file into a directory
